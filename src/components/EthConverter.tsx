@@ -77,16 +77,16 @@ const EthConverter = () => {
 
   return (
     <Card className="glass glow border-primary/20 shadow-card">
-      <CardHeader className="text-center">
-        <CardTitle className="text-2xl bg-gradient-primary bg-clip-text text-transparent">
+      <CardHeader className="text-center pb-4 sm:pb-6">
+        <CardTitle className="text-xl sm:text-2xl bg-gradient-primary bg-clip-text text-transparent">
           Ethereum Unit Converter
         </CardTitle>
-        <p className="text-muted-foreground">
+        <p className="text-sm sm:text-base text-muted-foreground">
           Convert between Wei, Gwei, and ETH in real-time
         </p>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid gap-4">
+      <CardContent className="space-y-4 sm:space-y-6 pt-0">
+        <div className="grid gap-3 sm:gap-4">
           <div className="space-y-2">
             <Label htmlFor="wei" className="text-sm font-medium">
               Wei
@@ -97,9 +97,9 @@ const EthConverter = () => {
               placeholder="0"
               value={wei}
               onChange={(e) => handleWeiChange(e.target.value)}
-              className="glass border-primary/30 focus:border-primary text-lg font-mono transition-all duration-300"
+              className="glass border-primary/30 focus:border-primary text-base sm:text-lg font-mono transition-all duration-300"
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground break-all">
               {wei && formatNumber(wei)} Wei
             </p>
           </div>
@@ -114,9 +114,9 @@ const EthConverter = () => {
               placeholder="0"
               value={gwei}
               onChange={(e) => handleGweiChange(e.target.value)}
-              className="glass border-primary/30 focus:border-primary text-lg font-mono transition-all duration-300"
+              className="glass border-primary/30 focus:border-primary text-base sm:text-lg font-mono transition-all duration-300"
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground break-all">
               {gwei && formatNumber(gwei)} Gwei
             </p>
           </div>
@@ -131,24 +131,24 @@ const EthConverter = () => {
               placeholder="0"
               value={eth}
               onChange={(e) => handleEthChange(e.target.value)}
-              className="glass border-primary/30 focus:border-primary text-lg font-mono transition-all duration-300"
+              className="glass border-primary/30 focus:border-primary text-base sm:text-lg font-mono transition-all duration-300"
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground break-all">
               {eth && formatNumber(eth, 18)} ETH
             </p>
           </div>
 
-          <div className="pt-4 border-t border-primary/20">
-            <div className="flex justify-between items-center">
+          <div className="pt-3 sm:pt-4 border-t border-primary/20">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
               <span className="text-sm text-muted-foreground">USD Value:</span>
-              <span className="text-lg font-semibold text-primary">
+              <span className="text-lg sm:text-xl font-semibold text-primary">
                 ${usdValue.toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}
               </span>
             </div>
-            <div className="flex justify-between items-center mt-2">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mt-2 gap-1 sm:gap-0">
               <span className="text-xs text-muted-foreground">ETH Price:</span>
               <span className="text-sm text-muted-foreground">
                 ${ethPrice.toLocaleString()}

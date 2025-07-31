@@ -167,40 +167,42 @@ const WhaleTracker = () => {
 
   return (
     <Card className="glass glow border-primary/20 shadow-card">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-xl">
-          <Waves className="h-5 w-5 text-primary animate-glow-pulse" />
-          Whale Tracker
-          <Badge variant="secondary" className="ml-auto">
+      <CardHeader className="pb-4 sm:pb-6">
+        <CardTitle className="flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl">
+          <div className="flex items-center gap-2">
+            <Waves className="h-5 w-5 text-primary animate-glow-pulse" />
+            Whale Tracker
+          </div>
+          <Badge variant="secondary" className="w-fit sm:ml-auto">
             Live
           </Badge>
         </CardTitle>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs sm:text-sm text-muted-foreground">
           Real-time tracking of large ETH transactions (100+ ETH)
         </p>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-3 max-h-96 overflow-y-auto">
-          {transactions.map((tx, index) => {
+      <CardContent className="pt-0">
+        <div className="space-y-3 max-h-72 sm:max-h-80 lg:max-h-96 overflow-y-auto">{transactions.map((tx, index) => {
             const { eth, usd } = getTransactionValue(tx.value);
             const isExpanded = expandedTx === tx.hash;
             return (
               <Collapsible key={tx.hash} open={isExpanded} onOpenChange={(open) => setExpandedTx(open ? tx.hash : null)}>
                 <div
-                  className={`p-4 rounded-lg border border-primary/10 bg-card/50 backdrop-blur-sm transition-all duration-500 ${
+                  className={`p-3 sm:p-4 rounded-lg border border-primary/10 bg-card/50 backdrop-blur-sm transition-all duration-500 ${
                     index === 0 ? "animate-slide-up ring-1 ring-primary/30" : ""
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <Badge variant="outline" className="text-xs">
                           {formatTimeAgo(tx.timestamp)}
                         </Badge>
                         {tx.isTokenTransfer && tx.tokenInfo && (
                           <Badge variant="secondary" className="text-xs flex items-center gap-1">
                             <Coins className="h-3 w-3" />
-                            {tx.tokenInfo.symbol}
+                            <span className="hidden xs:inline">{tx.tokenInfo.symbol}</span>
+                            <span className="xs:hidden">{tx.tokenInfo.symbol.slice(0, 4)}</span>
                           </Badge>
                         )}
                         <a
@@ -212,16 +214,16 @@ const WhaleTracker = () => {
                           <ExternalLink className="h-3 w-3" />
                         </a>
                       </div>
-                      <div className="text-sm space-y-1">
+                      <div className="text-xs sm:text-sm space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="text-muted-foreground">From:</span>
-                          <code className="text-xs bg-muted/20 px-1 rounded">
+                          <code className="text-xs bg-muted/20 px-1 rounded break-all">
                             {formatAddress(tx.from)}
                           </code>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-muted-foreground">To:</span>
-                          <code className="text-xs bg-muted/20 px-1 rounded">
+                          <code className="text-xs bg-muted/20 px-1 rounded break-all">
                             {formatAddress(tx.to)}
                           </code>
                         </div>
@@ -229,24 +231,25 @@ const WhaleTracker = () => {
                           <div className="flex items-center gap-2">
                             <span className="text-muted-foreground">Token:</span>
                             <span className="text-xs font-medium text-primary">
-                              {tx.tokenInfo.name} ({tx.tokenInfo.symbol})
+                              <span className="hidden sm:inline">{tx.tokenInfo.name} ({tx.tokenInfo.symbol})</span>
+                              <span className="sm:hidden">{tx.tokenInfo.symbol}</span>
                             </span>
                           </div>
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-lg font-semibold text-primary">
+                    <div className="text-right sm:text-left flex sm:block justify-between items-center sm:items-start">
+                      <div className="text-base sm:text-lg font-semibold text-primary">
                         {eth.toFixed(2)} ETH
                       </div>
-                      <div className="text-sm text-muted-foreground">
+                      <div className="text-xs sm:text-sm text-muted-foreground">
                         ${usd.toLocaleString(undefined, {
                           minimumFractionDigits: 0,
                           maximumFractionDigits: 0,
                         })}
                       </div>
                       {tx.gasPrice && (
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-xs text-muted-foreground hidden sm:block">
                           {tx.gasPrice} Gwei
                         </div>
                       )}
@@ -259,7 +262,12 @@ const WhaleTracker = () => {
                       size="sm" 
                       className="w-full mt-3 h-8 text-xs"
                     >
-                      {isExpanded ? "Hide Details" : "Show Details & Address Tokens"}
+                      <span className="hidden sm:inline">
+                        {isExpanded ? "Hide Details" : "Show Details & Address Tokens"}
+                      </span>
+                      <span className="sm:hidden">
+                        {isExpanded ? "Hide" : "Details"}
+                      </span>
                       <TrendingUp className="h-3 w-3 ml-2" />
                     </Button>
                   </CollapsibleTrigger>
@@ -267,30 +275,39 @@ const WhaleTracker = () => {
                   <CollapsibleContent className="mt-3 space-y-3">
                     <div className="border-t border-primary/10 pt-3">
                       <h4 className="text-sm font-medium mb-2">Transaction Details</h4>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                         <div>
                           <span className="text-muted-foreground">Hash:</span>
                           <p className="font-mono text-xs break-all">{tx.hash}</p>
                         </div>
                         <div>
                           <span className="text-muted-foreground">Input Data:</span>
-                          <p className="font-mono text-xs">{tx.input}</p>
+                          <p className="font-mono text-xs break-all">{tx.input}</p>
                         </div>
+                        {tx.gasPrice && (
+                          <div className="sm:hidden">
+                            <span className="text-muted-foreground">Gas Price:</span>
+                            <p className="text-xs">{tx.gasPrice} Gwei</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                     
                     {/* From Address Tokens */}
                     <div className="border-t border-primary/10 pt-3">
-                      <h4 className="text-sm font-medium mb-2 flex items-center gap-1">
-                        <Coins className="h-4 w-4" />
-                        From Address Tokens
+                      <h4 className="text-xs sm:text-sm font-medium mb-2 flex items-center gap-1">
+                        <Coins className="h-3 sm:h-4 w-3 sm:w-4" />
+                        <span className="hidden sm:inline">From Address Tokens</span>
+                        <span className="sm:hidden">From Tokens</span>
                       </h4>
-                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                      <div className="space-y-1 max-h-24 sm:max-h-32 overflow-y-auto">
                         {addressTokens[tx.from]?.map((token, idx) => (
                           <div key={idx} className="flex justify-between items-center p-2 bg-muted/10 rounded text-xs">
                             <span className="font-medium">{token.symbol}</span>
-                            <span className="text-muted-foreground">
-                              {parseFloat(token.balance || "0").toLocaleString()} {token.symbol}
+                            <span className="text-muted-foreground text-right">
+                              {parseFloat(token.balance || "0").toLocaleString(undefined, {
+                                maximumFractionDigits: 0
+                              })}
                             </span>
                           </div>
                         )) || <p className="text-xs text-muted-foreground">No tokens found</p>}
@@ -299,16 +316,19 @@ const WhaleTracker = () => {
                     
                     {/* To Address Tokens */}
                     <div className="border-t border-primary/10 pt-3">
-                      <h4 className="text-sm font-medium mb-2 flex items-center gap-1">
-                        <Coins className="h-4 w-4" />
-                        To Address Tokens
+                      <h4 className="text-xs sm:text-sm font-medium mb-2 flex items-center gap-1">
+                        <Coins className="h-3 sm:h-4 w-3 sm:w-4" />
+                        <span className="hidden sm:inline">To Address Tokens</span>
+                        <span className="sm:hidden">To Tokens</span>
                       </h4>
-                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                      <div className="space-y-1 max-h-24 sm:max-h-32 overflow-y-auto">
                         {addressTokens[tx.to]?.map((token, idx) => (
                           <div key={idx} className="flex justify-between items-center p-2 bg-muted/10 rounded text-xs">
                             <span className="font-medium">{token.symbol}</span>
-                            <span className="text-muted-foreground">
-                              {parseFloat(token.balance || "0").toLocaleString()} {token.symbol}
+                            <span className="text-muted-foreground text-right">
+                              {parseFloat(token.balance || "0").toLocaleString(undefined, {
+                                maximumFractionDigits: 0
+                              })}
                             </span>
                           </div>
                         )) || <p className="text-xs text-muted-foreground">No tokens found</p>}
