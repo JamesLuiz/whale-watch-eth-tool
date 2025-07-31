@@ -1,7 +1,17 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink, Waves } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ExternalLink, Waves, Coins, TrendingUp } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+
+interface TokenInfo {
+  address: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  balance?: string;
+}
 
 interface Transaction {
   hash: string;
@@ -10,17 +20,38 @@ interface Transaction {
   value: string;
   timestamp: number;
   gasPrice?: string;
+  isTokenTransfer?: boolean;
+  tokenInfo?: TokenInfo;
+  input?: string;
+}
+
+interface AddressTokens {
+  [address: string]: TokenInfo[];
 }
 
 const WhaleTracker = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [ethPrice, setEthPrice] = useState(3000);
+  const [addressTokens, setAddressTokens] = useState<AddressTokens>({});
+  const [expandedTx, setExpandedTx] = useState<string | null>(null);
 
-  // Mock whale transactions for demo (in real app, you'd use Ethereum API)
+  // Popular token addresses for demo
+  const popularTokens: TokenInfo[] = [
+    { address: "0xA0b86a33E6441",  name: "Uniswap", symbol: "UNI", decimals: 18 },
+    { address: "0x6B175474E89094C44Da98b954EedeAC495271d0F", name: "Dai Stablecoin", symbol: "DAI", decimals: 18 },
+    { address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", name: "Tether USD", symbol: "USDT", decimals: 6 },
+    { address: "0xA0b86a33E6441", name: "Wrapped Bitcoin", symbol: "WBTC", decimals: 8 },
+    { address: "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE", name: "Shiba Inu", symbol: "SHIB", decimals: 18 },
+  ];
+
+  // Enhanced mock whale transactions with token data
   useEffect(() => {
     const generateMockTransaction = (): Transaction => {
-      const value = (Math.random() * 1000 + 100).toFixed(4); // 100-1100 ETH
+      const value = (Math.random() * 1000 + 100).toFixed(4);
+      const isTokenTransfer = Math.random() > 0.6; // 40% chance of token transfer
+      const tokenInfo = isTokenTransfer ? popularTokens[Math.floor(Math.random() * popularTokens.length)] : undefined;
+      
       return {
         hash: `0x${Math.random().toString(16).substring(2, 66)}`,
         from: `0x${Math.random().toString(16).substring(2, 42)}`,
@@ -28,19 +59,52 @@ const WhaleTracker = () => {
         value,
         timestamp: Date.now(),
         gasPrice: (Math.random() * 100 + 20).toFixed(2),
+        isTokenTransfer,
+        tokenInfo,
+        input: isTokenTransfer ? "0xa9059cbb" : "0x", // transfer method signature for tokens
       };
     };
 
-    // Initial transactions
+    // Generate mock address token holdings
+    const generateAddressTokens = (address: string): TokenInfo[] => {
+      const numTokens = Math.floor(Math.random() * 5) + 1;
+      return Array.from({ length: numTokens }, () => {
+        const token = popularTokens[Math.floor(Math.random() * popularTokens.length)];
+        return {
+          ...token,
+          balance: (Math.random() * 1000000).toFixed(2),
+        };
+      });
+    };
+
     const initialTxs = Array.from({ length: 5 }, generateMockTransaction);
     setTransactions(initialTxs);
+    
+    // Generate token holdings for each address
+    const tokenHoldings: AddressTokens = {};
+    initialTxs.forEach(tx => {
+      if (!tokenHoldings[tx.from]) {
+        tokenHoldings[tx.from] = generateAddressTokens(tx.from);
+      }
+      if (!tokenHoldings[tx.to]) {
+        tokenHoldings[tx.to] = generateAddressTokens(tx.to);
+      }
+    });
+    setAddressTokens(tokenHoldings);
     setIsLoading(false);
 
     // Simulate real-time updates
     const interval = setInterval(() => {
       const newTx = generateMockTransaction();
-      setTransactions((prev) => [newTx, ...prev.slice(0, 9)]); // Keep latest 10
-    }, 8000 + Math.random() * 7000); // Random interval 8-15 seconds
+      setTransactions((prev) => [newTx, ...prev.slice(0, 9)]);
+      
+      // Add token holdings for new addresses
+      setAddressTokens(prev => ({
+        ...prev,
+        [newTx.from]: prev[newTx.from] || generateAddressTokens(newTx.from),
+        [newTx.to]: prev[newTx.to] || generateAddressTokens(newTx.to),
+      }));
+    }, 8000 + Math.random() * 7000);
 
     return () => clearInterval(interval);
   }, []);
@@ -119,61 +183,140 @@ const WhaleTracker = () => {
         <div className="space-y-3 max-h-96 overflow-y-auto">
           {transactions.map((tx, index) => {
             const { eth, usd } = getTransactionValue(tx.value);
+            const isExpanded = expandedTx === tx.hash;
             return (
-              <div
-                key={tx.hash}
-                className={`p-4 rounded-lg border border-primary/10 bg-card/50 backdrop-blur-sm transition-all duration-500 ${
-                  index === 0 ? "animate-slide-up ring-1 ring-primary/30" : ""
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="outline" className="text-xs">
-                        {formatTimeAgo(tx.timestamp)}
-                      </Badge>
-                      <a
-                        href={`https://etherscan.io/tx/${tx.hash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-muted-foreground hover:text-primary transition-colors"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
+              <Collapsible key={tx.hash} open={isExpanded} onOpenChange={(open) => setExpandedTx(open ? tx.hash : null)}>
+                <div
+                  className={`p-4 rounded-lg border border-primary/10 bg-card/50 backdrop-blur-sm transition-all duration-500 ${
+                    index === 0 ? "animate-slide-up ring-1 ring-primary/30" : ""
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="outline" className="text-xs">
+                          {formatTimeAgo(tx.timestamp)}
+                        </Badge>
+                        {tx.isTokenTransfer && tx.tokenInfo && (
+                          <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                            <Coins className="h-3 w-3" />
+                            {tx.tokenInfo.symbol}
+                          </Badge>
+                        )}
+                        <a
+                          href={`https://etherscan.io/tx/${tx.hash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
+                      <div className="text-sm space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">From:</span>
+                          <code className="text-xs bg-muted/20 px-1 rounded">
+                            {formatAddress(tx.from)}
+                          </code>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">To:</span>
+                          <code className="text-xs bg-muted/20 px-1 rounded">
+                            {formatAddress(tx.to)}
+                          </code>
+                        </div>
+                        {tx.isTokenTransfer && tx.tokenInfo && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">Token:</span>
+                            <span className="text-xs font-medium text-primary">
+                              {tx.tokenInfo.name} ({tx.tokenInfo.symbol})
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-sm space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">From:</span>
-                        <code className="text-xs bg-muted/20 px-1 rounded">
-                          {formatAddress(tx.from)}
-                        </code>
+                    <div className="text-right">
+                      <div className="text-lg font-semibold text-primary">
+                        {eth.toFixed(2)} ETH
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">To:</span>
-                        <code className="text-xs bg-muted/20 px-1 rounded">
-                          {formatAddress(tx.to)}
-                        </code>
+                      <div className="text-sm text-muted-foreground">
+                        ${usd.toLocaleString(undefined, {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        })}
                       </div>
+                      {tx.gasPrice && (
+                        <div className="text-xs text-muted-foreground">
+                          {tx.gasPrice} Gwei
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-lg font-semibold text-primary">
-                      {eth.toFixed(2)} ETH
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      ${usd.toLocaleString(undefined, {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      })}
-                    </div>
-                    {tx.gasPrice && (
-                      <div className="text-xs text-muted-foreground">
-                        {tx.gasPrice} Gwei
+                  
+                  <CollapsibleTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full mt-3 h-8 text-xs"
+                    >
+                      {isExpanded ? "Hide Details" : "Show Details & Address Tokens"}
+                      <TrendingUp className="h-3 w-3 ml-2" />
+                    </Button>
+                  </CollapsibleTrigger>
+                  
+                  <CollapsibleContent className="mt-3 space-y-3">
+                    <div className="border-t border-primary/10 pt-3">
+                      <h4 className="text-sm font-medium mb-2">Transaction Details</h4>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-muted-foreground">Hash:</span>
+                          <p className="font-mono text-xs break-all">{tx.hash}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Input Data:</span>
+                          <p className="font-mono text-xs">{tx.input}</p>
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                    
+                    {/* From Address Tokens */}
+                    <div className="border-t border-primary/10 pt-3">
+                      <h4 className="text-sm font-medium mb-2 flex items-center gap-1">
+                        <Coins className="h-4 w-4" />
+                        From Address Tokens
+                      </h4>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {addressTokens[tx.from]?.map((token, idx) => (
+                          <div key={idx} className="flex justify-between items-center p-2 bg-muted/10 rounded text-xs">
+                            <span className="font-medium">{token.symbol}</span>
+                            <span className="text-muted-foreground">
+                              {parseFloat(token.balance || "0").toLocaleString()} {token.symbol}
+                            </span>
+                          </div>
+                        )) || <p className="text-xs text-muted-foreground">No tokens found</p>}
+                      </div>
+                    </div>
+                    
+                    {/* To Address Tokens */}
+                    <div className="border-t border-primary/10 pt-3">
+                      <h4 className="text-sm font-medium mb-2 flex items-center gap-1">
+                        <Coins className="h-4 w-4" />
+                        To Address Tokens
+                      </h4>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {addressTokens[tx.to]?.map((token, idx) => (
+                          <div key={idx} className="flex justify-between items-center p-2 bg-muted/10 rounded text-xs">
+                            <span className="font-medium">{token.symbol}</span>
+                            <span className="text-muted-foreground">
+                              {parseFloat(token.balance || "0").toLocaleString()} {token.symbol}
+                            </span>
+                          </div>
+                        )) || <p className="text-xs text-muted-foreground">No tokens found</p>}
+                      </div>
+                    </div>
+                  </CollapsibleContent>
                 </div>
-              </div>
+              </Collapsible>
             );
           })}
         </div>
