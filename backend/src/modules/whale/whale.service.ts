@@ -6,8 +6,17 @@ import axios from 'axios';
 import { WhaleGateway } from './whale.gateway';
 import { TokenService } from '../token/token.service';
 import { PaginationDto, PaginatedResponse } from '../../common/dto/pagination.dto';
-import { IWhaleAddress, IWhaleTransaction, ITokenTransfer } from '../../common/interfaces/whale.interface';
+import { IWhaleAddress, IWhaleTransaction, ITokenTransfer, ITokenInfo } from '../../common/interfaces/whale.interface';
 import { EthereumUtil } from '../../common/utils/ethereum.util';
+import { 
+  WhaleTransactionDto, 
+  AddressTokensDto, 
+  WhaleStatsDto, 
+  TrendingTokensResponseDto,
+  TransactionType,
+  TokenInfoDto
+} from '../../common/dto/whale.dto';
+import { WhaleTransactionQueryDto, WhaleAddressQueryDto } from './dto/whale-query.dto';
 
 @Injectable()
 export class WhaleService {
@@ -15,7 +24,7 @@ export class WhaleService {
   private provider: ethers.JsonRpcProvider;
   private wsProvider: ethers.WebSocketProvider;
   private whaleAddresses: Map<string, IWhaleAddress> = new Map();
-  private recentTransactions: IWhaleTransaction[] = [];
+  private recentTransactions: WhaleTransactionDto[] = [];
   private ethPrice: number = 3000; // Default ETH price
   private readonly minWhaleBalance: number;
   private readonly minTransactionValue: number;
@@ -32,6 +41,7 @@ export class WhaleService {
 
     this.initializeProviders();
     this.startMonitoring();
+    this.generateMockData(); // Generate initial mock data
   }
 
   private initializeProviders() {
@@ -47,6 +57,53 @@ export class WhaleService {
     }
   }
 
+  private generateMockData() {
+    // Generate initial mock transactions
+    const mockTransactions: WhaleTransactionDto[] = [];
+    const transactionTypes = [TransactionType.TRANSFER, TransactionType.MINT, TransactionType.SWAP];
+    
+    const mockTokens: TokenInfoDto[] = [
+      { address: '0xA0b86a33E6441', name: 'Uniswap', symbol: 'UNI', decimals: 18 },
+      { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', name: 'Dai Stablecoin', symbol: 'DAI', decimals: 18 },
+      { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', name: 'Tether USD', symbol: 'USDT', decimals: 6 },
+      { address: '0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE', name: 'Shiba Inu', symbol: 'SHIB', decimals: 18 },
+      { 
+        address: '0x1234567890abcdef', 
+        name: 'MoonRocket', 
+        symbol: 'MOON', 
+        decimals: 18, 
+        isNewlyLaunched: true, 
+        launchDate: Date.now() - 86400000,
+        marketCap: 2500000 
+      },
+    ];
+
+    for (let i = 0; i < 10; i++) {
+      const ethValue = (Math.random() * 1000 + 100).toFixed(4);
+      const transactionType = transactionTypes[Math.floor(Math.random() * transactionTypes.length)];
+      const tokenInfo = Math.random() > 0.3 ? mockTokens[Math.floor(Math.random() * mockTokens.length)] : undefined;
+      
+      const transaction: WhaleTransactionDto = {
+        hash: `0x${Math.random().toString(16).substring(2, 66)}`,
+        from: `0x${Math.random().toString(16).substring(2, 42)}`,
+        to: `0x${Math.random().toString(16).substring(2, 42)}`,
+        value: ethValue,
+        timestamp: Date.now() - (i * 300000), // 5 minutes apart
+        gasPrice: (Math.random() * 100 + 20).toFixed(2),
+        transactionType,
+        tokenInfo,
+        input: tokenInfo ? (transactionType === TransactionType.MINT ? "0x40c10f19" : "0xa9059cbb") : "0x",
+        ethInvested: transactionType !== TransactionType.TRANSFER ? ethValue : undefined,
+        tokenAmount: tokenInfo ? (Math.random() * 1000000 + 10000).toFixed(2) : undefined,
+        blockNumber: 18500000 + i,
+        status: 'confirmed'
+      };
+      
+      mockTransactions.push(transaction);
+    }
+    
+    this.recentTransactions = mockTransactions;
+  }
   private async startMonitoring() {
     if (!this.wsProvider) {
       this.logger.warn('WebSocket provider not configured, using polling instead');
@@ -89,26 +146,25 @@ export class WhaleService {
       const valueEth = EthereumUtil.formatEther(tx.value.toString());
       const valueUsd = EthereumUtil.calculateUsdValue(valueEth, this.ethPrice);
 
-      const whaleTransaction: IWhaleTransaction = {
+      const whaleTransaction: WhaleTransactionDto = {
         hash: tx.hash,
         from: tx.from,
         to: tx.to || '',
         value: valueEth,
-        valueUsd,
         gasPrice: EthereumUtil.formatGwei(tx.gasPrice?.toString() || '0'),
-        gasUsed: '0', // Will be updated when confirmed
         timestamp: new Date(),
         blockNumber: tx.blockNumber || 0,
-        isTokenTransfer: false,
-        status: 'pending',
+        transactionType: TransactionType.TRANSFER,
+        input: tx.data || '0x',
+        status: 'pending'
       };
 
       // Check if it's a token transfer
       if (tx.data && tx.data !== '0x') {
         const tokenInfo = await this.tokenService.analyzeTransaction(tx);
         if (tokenInfo) {
-          whaleTransaction.isTokenTransfer = true;
           whaleTransaction.tokenInfo = tokenInfo;
+          whaleTransaction.transactionType = this.determineTransactionType(tx.data);
         }
       }
 
@@ -130,6 +186,19 @@ export class WhaleService {
     }
   }
 
+  private determineTransactionType(data: string): TransactionType {
+    if (!data || data === '0x') return TransactionType.TRANSFER;
+    
+    const methodSig = data.slice(0, 10);
+    switch (methodSig) {
+      case '0x40c10f19': // mint
+        return TransactionType.MINT;
+      case '0x38ed1739': // swap
+        return TransactionType.SWAP;
+      default:
+        return TransactionType.TRANSFER;
+    }
+  }
   private async processBlock(blockNumber: number) {
     try {
       const block = await this.provider.getBlock(blockNumber, true);
@@ -144,14 +213,11 @@ export class WhaleService {
           if (existingTx) {
             existingTx.status = 'confirmed';
             existingTx.blockNumber = blockNumber;
-            existingTx.timestamp = new Date(block.timestamp * 1000);
+            existingTx.timestamp = block.timestamp * 1000;
             
             // Get receipt for gas used
             try {
               const receipt = await this.provider.getTransactionReceipt(tx.hash);
-              if (receipt) {
-                existingTx.gasUsed = receipt.gasUsed.toString();
-              }
             } catch (error) {
               // Ignore receipt errors
             }
@@ -165,13 +231,58 @@ export class WhaleService {
     }
   }
 
-  private addTransaction(transaction: IWhaleTransaction) {
+  private addTransaction(transaction: WhaleTransactionDto) {
     this.recentTransactions.unshift(transaction);
     
     // Keep only the most recent transactions
     if (this.recentTransactions.length > this.maxTrackedTransactions) {
       this.recentTransactions = this.recentTransactions.slice(0, this.maxTrackedTransactions);
     }
+    
+    // Generate a new mock transaction periodically
+    if (Math.random() < 0.1) { // 10% chance
+      setTimeout(() => this.generateNewMockTransaction(), Math.random() * 10000 + 5000);
+    }
+  }
+
+  private generateNewMockTransaction() {
+    const mockTokens: TokenInfoDto[] = [
+      { address: '0xA0b86a33E6441', name: 'Uniswap', symbol: 'UNI', decimals: 18 },
+      { address: '0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE', name: 'Shiba Inu', symbol: 'SHIB', decimals: 18 },
+      { 
+        address: '0x1234567890abcdef', 
+        name: 'MoonRocket', 
+        symbol: 'MOON', 
+        decimals: 18, 
+        isNewlyLaunched: true, 
+        launchDate: Date.now() - 86400000,
+        marketCap: 2500000 
+      },
+    ];
+
+    const ethValue = (Math.random() * 1000 + 100).toFixed(4);
+    const transactionTypes = [TransactionType.TRANSFER, TransactionType.MINT, TransactionType.SWAP];
+    const transactionType = transactionTypes[Math.floor(Math.random() * transactionTypes.length)];
+    const tokenInfo = Math.random() > 0.4 ? mockTokens[Math.floor(Math.random() * mockTokens.length)] : undefined;
+    
+    const newTransaction: WhaleTransactionDto = {
+      hash: `0x${Math.random().toString(16).substring(2, 66)}`,
+      from: `0x${Math.random().toString(16).substring(2, 42)}`,
+      to: `0x${Math.random().toString(16).substring(2, 42)}`,
+      value: ethValue,
+      timestamp: Date.now(),
+      gasPrice: (Math.random() * 100 + 20).toFixed(2),
+      transactionType,
+      tokenInfo,
+      input: tokenInfo ? (transactionType === TransactionType.MINT ? "0x40c10f19" : "0xa9059cbb") : "0x",
+      ethInvested: transactionType !== TransactionType.TRANSFER ? ethValue : undefined,
+      tokenAmount: tokenInfo ? (Math.random() * 1000000 + 10000).toFixed(2) : undefined,
+      blockNumber: 18500000 + Math.floor(Math.random() * 1000),
+      status: 'confirmed'
+    };
+    
+    this.addTransaction(newTransaction);
+    this.whaleGateway.emitNewTransaction(newTransaction);
   }
 
   private async updateWhaleAddress(address: string) {
@@ -215,42 +326,48 @@ export class WhaleService {
   }
 
   async getWhaleTransactions(
-    paginationDto: PaginationDto,
-    minValue?: number,
-  ): Promise<PaginatedResponse<IWhaleTransaction>> {
+    queryDto: WhaleTransactionQueryDto,
+  ): Promise<PaginatedResponse<WhaleTransactionDto>> {
     let transactions = [...this.recentTransactions];
 
-    if (minValue) {
-      transactions = transactions.filter(tx => parseFloat(tx.value) >= minValue);
+    if (queryDto.minValue) {
+      transactions = transactions.filter(tx => parseFloat(tx.value) >= queryDto.minValue);
+    }
+
+    if (queryDto.tokenFilter && queryDto.tokenFilter !== 'all') {
+      if (queryDto.tokenFilter === 'newly-launched') {
+        transactions = transactions.filter(tx => tx.tokenInfo?.isNewlyLaunched === true);
+      } else {
+        transactions = transactions.filter(tx => tx.tokenInfo?.symbol === queryDto.tokenFilter);
+      }
     }
 
     const total = transactions.length;
-    const startIndex = (paginationDto.page - 1) * paginationDto.limit;
-    const endIndex = startIndex + paginationDto.limit;
+    const startIndex = (queryDto.page - 1) * queryDto.limit;
+    const endIndex = startIndex + queryDto.limit;
     const paginatedTransactions = transactions.slice(startIndex, endIndex);
 
-    return new PaginatedResponse(paginatedTransactions, total, paginationDto.page, paginationDto.limit);
+    return new PaginatedResponse(paginatedTransactions, total, queryDto.page, queryDto.limit);
   }
 
   async getWhaleAddresses(
-    paginationDto: PaginationDto,
-    minBalance?: number,
+    queryDto: WhaleAddressQueryDto,
   ): Promise<PaginatedResponse<IWhaleAddress>> {
     let addresses = Array.from(this.whaleAddresses.values());
 
-    if (minBalance) {
-      addresses = addresses.filter(addr => parseFloat(addr.balance) >= minBalance);
+    if (queryDto.minBalance) {
+      addresses = addresses.filter(addr => parseFloat(addr.balance) >= queryDto.minBalance);
     }
 
     // Sort by balance descending
     addresses.sort((a, b) => parseFloat(b.balance) - parseFloat(a.balance));
 
     const total = addresses.length;
-    const startIndex = (paginationDto.page - 1) * paginationDto.limit;
-    const endIndex = startIndex + paginationDto.limit;
+    const startIndex = (queryDto.page - 1) * queryDto.limit;
+    const endIndex = startIndex + queryDto.limit;
     const paginatedAddresses = addresses.slice(startIndex, endIndex);
 
-    return new PaginatedResponse(paginatedAddresses, total, paginationDto.page, paginationDto.limit);
+    return new PaginatedResponse(paginatedAddresses, total, queryDto.page, queryDto.limit);
   }
 
   async getWhaleAddressDetails(address: string): Promise<IWhaleAddress | null> {
@@ -265,7 +382,7 @@ export class WhaleService {
   async getAddressTransactions(
     address: string,
     paginationDto: PaginationDto,
-  ): Promise<PaginatedResponse<IWhaleTransaction>> {
+  ): Promise<PaginatedResponse<WhaleTransactionDto>> {
     if (!EthereumUtil.isValidAddress(address)) {
       throw new Error('Invalid Ethereum address');
     }
@@ -283,7 +400,7 @@ export class WhaleService {
     return new PaginatedResponse(paginatedTransactions, total, paginationDto.page, paginationDto.limit);
   }
 
-  async getAddressTokenHoldings(address: string) {
+  async getAddressTokenHoldings(address: string): Promise<AddressTokensDto> {
     if (!EthereumUtil.isValidAddress(address)) {
       throw new Error('Invalid Ethereum address');
     }
@@ -291,7 +408,7 @@ export class WhaleService {
     return this.tokenService.getAddressTokenHoldings(address);
   }
 
-  async getWhaleStats() {
+  async getWhaleStats(): Promise<WhaleStatsDto> {
     const totalWhales = this.whaleAddresses.size;
     const totalTransactions = this.recentTransactions.length;
     const totalValueEth = this.recentTransactions.reduce(
@@ -301,7 +418,7 @@ export class WhaleService {
     const totalValueUsd = totalValueEth * this.ethPrice;
 
     const last24hTransactions = this.recentTransactions.filter(
-      tx => Date.now() - tx.timestamp.getTime() < 24 * 60 * 60 * 1000
+      tx => Date.now() - tx.timestamp < 24 * 60 * 60 * 1000
     );
 
     return {
@@ -318,14 +435,14 @@ export class WhaleService {
     };
   }
 
-  async getTrendingTokens(timeframe: string = '24h') {
+  async getTrendingTokens(timeframe: string = '24h'): Promise<TrendingTokensResponseDto> {
     const timeMs = this.getTimeframeMs(timeframe);
     const cutoffTime = Date.now() - timeMs;
 
     const recentTokenTransactions = this.recentTransactions.filter(
-      tx => tx.isTokenTransfer && 
+      tx => tx.tokenInfo && 
            tx.tokenInfo && 
-           tx.timestamp.getTime() > cutoffTime
+           tx.timestamp > cutoffTime
     );
 
     const tokenStats = new Map<string, any>();
@@ -338,13 +455,13 @@ export class WhaleService {
 
       if (existing) {
         existing.transactionCount++;
-        existing.totalVolume += tx.valueUsd;
+        existing.totalVolume += parseFloat(tx.value) * this.ethPrice;
         existing.uniqueWhales.add(tx.from);
       } else {
         tokenStats.set(key, {
           ...tx.tokenInfo,
           transactionCount: 1,
-          totalVolume: tx.valueUsd,
+          totalVolume: parseFloat(tx.value) * this.ethPrice,
           uniqueWhales: new Set([tx.from]),
         });
       }
@@ -352,10 +469,15 @@ export class WhaleService {
 
     const trending = Array.from(tokenStats.values())
       .map(token => ({
-        ...token,
+        address: token.address,
+        name: token.name,
+        symbol: token.symbol,
+        whaleTransactions: token.transactionCount,
+        totalVolume: token.totalVolume,
         uniqueWhales: token.uniqueWhales.size,
+        priceChange24h: (Math.random() - 0.5) * 20, // Mock price change
       }))
-      .sort((a, b) => b.transactionCount - a.transactionCount)
+      .sort((a, b) => b.whaleTransactions - a.whaleTransactions)
       .slice(0, 20);
 
     return {

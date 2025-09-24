@@ -20,6 +20,9 @@ async function bootstrap() {
       transform: true,
       whitelist: true,
       forbidNonWhitelisted: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
     }),
   );
 
@@ -35,6 +38,7 @@ async function bootstrap() {
     .addTag('transactions', 'Transaction data')
     .addTag('tokens', 'Token information')
     .addTag('health', 'Health checks')
+    .addTag('app', 'Application information')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

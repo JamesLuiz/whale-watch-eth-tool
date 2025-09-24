@@ -6,7 +6,7 @@ import {
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
-import { IWhaleTransaction } from '../../common/interfaces/whale.interface';
+import { WhaleTransactionDto } from '../../common/dto/whale.dto';
 
 @WebSocketGateway({
   cors: {
@@ -38,7 +38,7 @@ export class WhaleGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`Client disconnected: ${client.id} (Total: ${this.connectedClients})`);
   }
 
-  emitNewTransaction(transaction: IWhaleTransaction) {
+  emitNewTransaction(transaction: WhaleTransactionDto) {
     this.server.emit('new-whale-transaction', transaction);
     this.logger.debug(`Emitted new whale transaction: ${transaction.hash}`);
   }

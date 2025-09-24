@@ -1,7 +1,18 @@
 import { Controller, Get, Query, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { WhaleService } from './whale.service';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { PaginationDto, PaginatedResponse } from '../../common/dto/pagination.dto';
+import { 
+  WhaleTransactionDto, 
+  AddressTokensDto, 
+  WhaleStatsDto, 
+  TrendingTokensResponseDto 
+} from '../../common/dto/whale.dto';
+import { 
+  WhaleTransactionQueryDto, 
+  WhaleAddressQueryDto, 
+  TrendingTokensQueryDto 
+} from './dto/whale-query.dto';
 
 @ApiTags('whales')
 @Controller('whales')
@@ -10,28 +21,41 @@ export class WhaleController {
 
   @Get('transactions')
   @ApiOperation({ summary: 'Get recent whale transactions' })
-  @ApiResponse({ status: 200, description: 'Whale transactions retrieved successfully' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'minValue', required: false, type: Number, description: 'Minimum transaction value in ETH' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Whale transactions retrieved successfully',
+    type: 'object',
+    schema: {
+      allOf: [
+        { $ref: '#/components/schemas/PaginatedResponse' },
+        {
+          properties: {
+            data: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/WhaleTransactionDto' }
+            }
+          }
+        }
+      ]
+    }
+  })
   async getWhaleTransactions(
-    @Query() paginationDto: PaginationDto,
-    @Query('minValue') minValue?: number,
-  ) {
-    return this.whaleService.getWhaleTransactions(paginationDto, minValue);
+    @Query() queryDto: WhaleTransactionQueryDto,
+  ): Promise<PaginatedResponse<WhaleTransactionDto>> {
+    return this.whaleService.getWhaleTransactions(queryDto);
   }
 
   @Get('addresses')
   @ApiOperation({ summary: 'Get tracked whale addresses' })
-  @ApiResponse({ status: 200, description: 'Whale addresses retrieved successfully' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'minBalance', required: false, type: Number, description: 'Minimum balance in ETH' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Whale addresses retrieved successfully',
+    type: 'object'
+  })
   async getWhaleAddresses(
-    @Query() paginationDto: PaginationDto,
-    @Query('minBalance') minBalance?: number,
+    @Query() queryDto: WhaleAddressQueryDto,
   ) {
-    return this.whaleService.getWhaleAddresses(paginationDto, minBalance);
+    return this.whaleService.getWhaleAddresses(queryDto);
   }
 
   @Get('addresses/:address')
@@ -44,37 +68,50 @@ export class WhaleController {
 
   @Get('addresses/:address/transactions')
   @ApiOperation({ summary: 'Get transactions for a specific whale address' })
-  @ApiResponse({ status: 200, description: 'Address transactions retrieved successfully' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Address transactions retrieved successfully',
+    type: 'object'
+  })
   @ApiParam({ name: 'address', description: 'Ethereum address' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
   async getAddressTransactions(
     @Param('address') address: string,
     @Query() paginationDto: PaginationDto,
-  ) {
+  ): Promise<PaginatedResponse<WhaleTransactionDto>> {
     return this.whaleService.getAddressTransactions(address, paginationDto);
   }
 
   @Get('addresses/:address/tokens')
   @ApiOperation({ summary: 'Get token holdings for a whale address' })
-  @ApiResponse({ status: 200, description: 'Token holdings retrieved successfully' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Token holdings retrieved successfully',
+    type: AddressTokensDto
+  })
   @ApiParam({ name: 'address', description: 'Ethereum address' })
-  async getAddressTokens(@Param('address') address: string) {
+  async getAddressTokens(@Param('address') address: string): Promise<AddressTokensDto> {
     return this.whaleService.getAddressTokenHoldings(address);
   }
 
   @Get('stats')
   @ApiOperation({ summary: 'Get whale tracking statistics' })
-  @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
-  async getWhaleStats() {
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Statistics retrieved successfully',
+    type: WhaleStatsDto
+  })
+  async getWhaleStats(): Promise<WhaleStatsDto> {
     return this.whaleService.getWhaleStats();
   }
 
   @Get('trending-tokens')
   @ApiOperation({ summary: 'Get trending tokens among whales' })
-  @ApiResponse({ status: 200, description: 'Trending tokens retrieved successfully' })
-  @ApiQuery({ name: 'timeframe', required: false, enum: ['1h', '24h', '7d'], description: 'Time frame for trending analysis' })
-  async getTrendingTokens(@Query('timeframe') timeframe: string = '24h') {
-    return this.whaleService.getTrendingTokens(timeframe);
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Trending tokens retrieved successfully',
+    type: TrendingTokensResponseDto
+  })
+  async getTrendingTokens(@Query() queryDto: TrendingTokensQueryDto): Promise<TrendingTokensResponseDto> {
+    return this.whaleService.getTrendingTokens(queryDto.timeframe || '24h');
   }
 }

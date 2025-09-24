@@ -20,12 +20,25 @@ export class PaginationDto {
 }
 
 export class PaginatedResponse<T> {
+  @ApiPropertyOptional({ description: 'Array of items' })
   data: T[];
+  
+  @ApiPropertyOptional({ description: 'Total number of items' })
   total: number;
+  
+  @ApiPropertyOptional({ description: 'Current page number' })
   page: number;
+  
+  @ApiPropertyOptional({ description: 'Items per page' })
   limit: number;
+  
+  @ApiPropertyOptional({ description: 'Total number of pages' })
   totalPages: number;
+  
+  @ApiPropertyOptional({ description: 'Whether there is a next page' })
   hasNext: boolean;
+  
+  @ApiPropertyOptional({ description: 'Whether there is a previous page' })
   hasPrev: boolean;
 
   constructor(data: T[], total: number, page: number, limit: number) {

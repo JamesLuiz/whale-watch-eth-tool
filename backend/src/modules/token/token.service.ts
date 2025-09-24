@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import axios from 'axios';
 import { ITokenInfo } from '../../common/interfaces/whale.interface';
 import { EthereumUtil } from '../../common/utils/ethereum.util';
+import { AddressTokensDto, TokenInfoDto } from '../../common/dto/whale.dto';
 
 @Injectable()
 export class TokenService {
@@ -141,7 +142,7 @@ export class TokenService {
     }
   }
 
-  async getAddressTokenHoldings(address: string) {
+  async getAddressTokenHoldings(address: string): Promise<AddressTokensDto> {
     try {
       if (!EthereumUtil.isValidAddress(address)) {
         throw new Error('Invalid Ethereum address');
@@ -150,7 +151,7 @@ export class TokenService {
       // This would typically require scanning for token transfers
       // or using a service like Moralis, Alchemy, etc.
       // For now, return popular tokens with mock balances
-      const popularTokens = [
+      const popularTokens: TokenInfoDto[] = [
         { address: '0xA0b86a33E6441', name: 'Uniswap', symbol: 'UNI', decimals: 18 },
         { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', name: 'Dai Stablecoin', symbol: 'DAI', decimals: 18 },
         { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', name: 'Tether USD', symbol: 'USDT', decimals: 6 },
@@ -160,19 +161,19 @@ export class TokenService {
       const holdings = popularTokens.map(token => ({
         ...token,
         balance: (Math.random() * 1000000).toFixed(2),
-        balanceFormatted: (Math.random() * 1000000).toFixed(2),
-        balanceUsd: Math.random() * 50000,
       }));
+
+      const totalValueUsd = holdings.reduce((sum, token) => sum + (Math.random() * 50000), 0);
 
       return {
         address,
         tokens: holdings,
-        totalValueUsd: holdings.reduce((sum, token) => sum + token.balanceUsd, 0),
+        totalValueUsd,
         lastUpdated: new Date().toISOString(),
       };
     } catch (error) {
       this.logger.error(`Error getting token holdings for ${address}:`, error.message);
-      return null;
+      throw error;
     }
   }
 
