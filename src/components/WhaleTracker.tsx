@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Waves, Coins, TrendingUp } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ExternalLink, Waves, Coins, TrendingUp, Sparkles, Filter } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface TokenInfo {
@@ -11,6 +12,9 @@ interface TokenInfo {
   symbol: string;
   decimals: number;
   balance?: string;
+  isNewlyLaunched?: boolean;
+  launchDate?: number;
+  marketCap?: number;
 }
 
 interface Transaction {
@@ -20,9 +24,11 @@ interface Transaction {
   value: string;
   timestamp: number;
   gasPrice?: string;
-  isTokenTransfer?: boolean;
+  transactionType: 'transfer' | 'mint' | 'swap';
   tokenInfo?: TokenInfo;
   input?: string;
+  ethInvested?: string;
+  tokenAmount?: string;
 }
 
 interface AddressTokens {
@@ -35,33 +41,87 @@ const WhaleTracker = () => {
   const [ethPrice, setEthPrice] = useState(3000);
   const [addressTokens, setAddressTokens] = useState<AddressTokens>({});
   const [expandedTx, setExpandedTx] = useState<string | null>(null);
+  const [tokenFilter, setTokenFilter] = useState<string>("all");
 
-  // Popular token addresses for demo
+  // Popular and newly launched tokens for demo
   const popularTokens: TokenInfo[] = [
-    { address: "0xA0b86a33E6441",  name: "Uniswap", symbol: "UNI", decimals: 18 },
+    { address: "0xA0b86a33E6441", name: "Uniswap", symbol: "UNI", decimals: 18 },
     { address: "0x6B175474E89094C44Da98b954EedeAC495271d0F", name: "Dai Stablecoin", symbol: "DAI", decimals: 18 },
     { address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", name: "Tether USD", symbol: "USDT", decimals: 6 },
     { address: "0xA0b86a33E6441", name: "Wrapped Bitcoin", symbol: "WBTC", decimals: 8 },
     { address: "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE", name: "Shiba Inu", symbol: "SHIB", decimals: 18 },
   ];
 
-  // Enhanced mock whale transactions with token data
+  const newlyLaunchedTokens: TokenInfo[] = [
+    { 
+      address: "0x1234567890abcdef", 
+      name: "MoonRocket", 
+      symbol: "MOON", 
+      decimals: 18, 
+      isNewlyLaunched: true, 
+      launchDate: Date.now() - 86400000, // 1 day ago
+      marketCap: 2500000 
+    },
+    { 
+      address: "0xabcdef1234567890", 
+      name: "DiamondHands", 
+      symbol: "DMNDS", 
+      decimals: 18, 
+      isNewlyLaunched: true, 
+      launchDate: Date.now() - 172800000, // 2 days ago
+      marketCap: 1800000 
+    },
+    { 
+      address: "0x9876543210fedcba", 
+      name: "NextGenAI", 
+      symbol: "NXAI", 
+      decimals: 18, 
+      isNewlyLaunched: true, 
+      launchDate: Date.now() - 43200000, // 12 hours ago
+      marketCap: 850000 
+    },
+  ];
+
+  const allTokens = [...popularTokens, ...newlyLaunchedTokens];
+
+  // Enhanced mock whale transactions with token data and minting
   useEffect(() => {
     const generateMockTransaction = (): Transaction => {
-      const value = (Math.random() * 1000 + 100).toFixed(4);
-      const isTokenTransfer = Math.random() > 0.6; // 40% chance of token transfer
-      const tokenInfo = isTokenTransfer ? popularTokens[Math.floor(Math.random() * popularTokens.length)] : undefined;
+      const ethValue = (Math.random() * 1000 + 100).toFixed(4);
+      const transactionTypes: Array<'transfer' | 'mint' | 'swap'> = ['transfer', 'mint', 'swap'];
+      const transactionType = transactionTypes[Math.floor(Math.random() * transactionTypes.length)];
+      
+      let tokenInfo: TokenInfo | undefined;
+      let ethInvested: string | undefined;
+      let tokenAmount: string | undefined;
+      
+      if (transactionType === 'mint') {
+        // For mints, prefer newly launched tokens
+        const mintTokens = Math.random() > 0.3 ? newlyLaunchedTokens : allTokens;
+        tokenInfo = mintTokens[Math.floor(Math.random() * mintTokens.length)];
+        ethInvested = ethValue;
+        tokenAmount = (Math.random() * 1000000 + 10000).toFixed(2);
+      } else if (transactionType === 'swap') {
+        tokenInfo = allTokens[Math.floor(Math.random() * allTokens.length)];
+        ethInvested = (parseFloat(ethValue) * 0.8).toFixed(4); // 80% of total value
+        tokenAmount = (Math.random() * 500000 + 5000).toFixed(2);
+      } else if (Math.random() > 0.6) {
+        tokenInfo = popularTokens[Math.floor(Math.random() * popularTokens.length)];
+        tokenAmount = (Math.random() * 100000 + 1000).toFixed(2);
+      }
       
       return {
         hash: `0x${Math.random().toString(16).substring(2, 66)}`,
         from: `0x${Math.random().toString(16).substring(2, 42)}`,
         to: `0x${Math.random().toString(16).substring(2, 42)}`,
-        value,
+        value: ethValue,
         timestamp: Date.now(),
         gasPrice: (Math.random() * 100 + 20).toFixed(2),
-        isTokenTransfer,
+        transactionType,
         tokenInfo,
-        input: isTokenTransfer ? "0xa9059cbb" : "0x", // transfer method signature for tokens
+        ethInvested,
+        tokenAmount,
+        input: tokenInfo ? (transactionType === 'mint' ? "0x40c10f19" : transactionType === 'swap' ? "0x38ed1739" : "0xa9059cbb") : "0x",
       };
     };
 
@@ -69,7 +129,7 @@ const WhaleTracker = () => {
     const generateAddressTokens = (address: string): TokenInfo[] => {
       const numTokens = Math.floor(Math.random() * 5) + 1;
       return Array.from({ length: numTokens }, () => {
-        const token = popularTokens[Math.floor(Math.random() * popularTokens.length)];
+        const token = allTokens[Math.floor(Math.random() * allTokens.length)];
         return {
           ...token,
           balance: (Math.random() * 1000000).toFixed(2),
@@ -143,6 +203,22 @@ const WhaleTracker = () => {
     return { eth, usd };
   };
 
+  const getTransactionTypeColor = (type: string) => {
+    switch (type) {
+      case 'mint': return 'bg-green-500/20 text-green-400 border-green-500/30';
+      case 'swap': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      default: return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
+    }
+  };
+
+  const filteredTransactions = transactions.filter(tx => {
+    if (tokenFilter === "all") return true;
+    if (tokenFilter === "newly-launched") {
+      return tx.tokenInfo?.isNewlyLaunched === true;
+    }
+    return tx.tokenInfo?.symbol === tokenFilter;
+  });
+
   if (isLoading) {
     return (
       <Card className="glass glow border-primary/20 shadow-card">
@@ -178,11 +254,36 @@ const WhaleTracker = () => {
           </Badge>
         </CardTitle>
         <p className="text-xs sm:text-sm text-muted-foreground">
-          Real-time tracking of large ETH transactions (100+ ETH)
+          Track whale transactions including newly launched token mints
         </p>
+        <div className="flex flex-col sm:flex-row gap-2 mt-3">
+          <Select value={tokenFilter} onValueChange={setTokenFilter}>
+            <SelectTrigger className="w-full sm:w-48">
+              <SelectValue placeholder="Filter by token" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Transactions</SelectItem>
+              <SelectItem value="newly-launched">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-3 w-3" />
+                  Newly Launched
+                </div>
+              </SelectItem>
+              {allTokens.map((token) => (
+                <SelectItem key={token.symbol} value={token.symbol}>
+                  {token.symbol} - {token.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Badge variant="outline" className="w-fit">
+            <Filter className="h-3 w-3 mr-1" />
+            {filteredTransactions.length} transactions
+          </Badge>
+        </div>
       </CardHeader>
       <CardContent className="pt-0">
-        <div className="space-y-3 max-h-72 sm:max-h-80 lg:max-h-96 overflow-y-auto">{transactions.map((tx, index) => {
+        <div className="space-y-3 max-h-72 sm:max-h-80 lg:max-h-96 overflow-y-auto">{filteredTransactions.map((tx, index) => {
             const { eth, usd } = getTransactionValue(tx.value);
             const isExpanded = expandedTx === tx.hash;
             return (
@@ -198,11 +299,17 @@ const WhaleTracker = () => {
                         <Badge variant="outline" className="text-xs">
                           {formatTimeAgo(tx.timestamp)}
                         </Badge>
-                        {tx.isTokenTransfer && tx.tokenInfo && (
+                        <Badge className={`text-xs border ${getTransactionTypeColor(tx.transactionType)}`}>
+                          {tx.transactionType.toUpperCase()}
+                        </Badge>
+                        {tx.tokenInfo && (
                           <Badge variant="secondary" className="text-xs flex items-center gap-1">
                             <Coins className="h-3 w-3" />
                             <span className="hidden xs:inline">{tx.tokenInfo.symbol}</span>
                             <span className="xs:hidden">{tx.tokenInfo.symbol.slice(0, 4)}</span>
+                            {tx.tokenInfo.isNewlyLaunched && (
+                              <Sparkles className="h-3 w-3 text-yellow-400" />
+                            )}
                           </Badge>
                         )}
                         <a
@@ -227,12 +334,33 @@ const WhaleTracker = () => {
                             {formatAddress(tx.to)}
                           </code>
                         </div>
-                        {tx.isTokenTransfer && tx.tokenInfo && (
+                        {tx.tokenInfo && (
                           <div className="flex items-center gap-2">
                             <span className="text-muted-foreground">Token:</span>
-                            <span className="text-xs font-medium text-primary">
+                            <span className="text-xs font-medium text-primary flex items-center gap-1">
                               <span className="hidden sm:inline">{tx.tokenInfo.name} ({tx.tokenInfo.symbol})</span>
                               <span className="sm:hidden">{tx.tokenInfo.symbol}</span>
+                              {tx.tokenInfo.isNewlyLaunched && (
+                                <Badge variant="outline" className="text-xs bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+                                  NEW
+                                </Badge>
+                              )}
+                            </span>
+                          </div>
+                        )}
+                        {tx.ethInvested && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">ETH Invested:</span>
+                            <span className="text-xs font-medium text-green-400">
+                              {parseFloat(tx.ethInvested).toFixed(4)} ETH
+                            </span>
+                          </div>
+                        )}
+                        {tx.tokenAmount && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">Token Amount:</span>
+                            <span className="text-xs font-medium">
+                              {parseFloat(tx.tokenAmount).toLocaleString()} {tx.tokenInfo?.symbol}
                             </span>
                           </div>
                         )}
