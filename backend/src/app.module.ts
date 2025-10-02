@@ -7,6 +7,10 @@ import { TokenModule } from './modules/token/token.module';
 import { HealthModule } from './modules/health/health.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { BnbModule } from './modules/bnb/bnb.module';
+import { SolanaModule } from './modules/solana/solana.module';
+import { WhaleMagnetModule } from './modules/whale-magnet/whale-magnet.module';
+
 
 @Module({
   imports: [
@@ -19,6 +23,10 @@ import { AppService } from './app.service';
     TransactionModule,
     TokenModule,
     HealthModule,
+    BnbModule,
+    SolanaModule,
+    WhaleMagnetModule,
+
   ],
   controllers: [AppController],
   providers: [AppService],

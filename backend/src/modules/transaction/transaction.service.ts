@@ -76,6 +76,7 @@ export class TransactionService {
           isTokenTransfer: this.isTokenTransfer(details.data),
           methodSignature: this.getMethodSignature(details.data),
           estimatedCost: this.calculateTransactionCost(details),
+          tokenTransfer: null,
         },
       };
 
@@ -179,7 +180,7 @@ export class TransactionService {
     try {
       if (!details.gasUsed || !details.gasPrice) return '0';
       
-      const gasCostWei = (BigInt(details.gasUsed) * BigInt(EthereumUtil.parseUnits(details.gasPrice, 'gwei'))).toString();
+      const gasCostWei = (BigInt(details.gasUsed) * BigInt(EthereumUtil.parseUnits(details.gasPrice, 9))).toString();
       return EthereumUtil.formatEther(gasCostWei);
     } catch (error) {
       return '0';

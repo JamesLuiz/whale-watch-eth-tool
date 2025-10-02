@@ -8,6 +8,6 @@ import { TokenModule } from '../token/token.module';
   imports: [TokenModule],
   controllers: [WhaleController],
   providers: [WhaleService, WhaleGateway],
-  exports: [WhaleService],
+  exports: [WhaleService,WhaleGateway],
 })
 export class WhaleModule {}

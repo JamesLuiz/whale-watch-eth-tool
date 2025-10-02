@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNumber, IsBoolean, IsOptional, IsArray, IsEnum, IsDateString } from 'class-validator';
+import { IsString, IsNumber, IsBoolean, IsOptional, IsArray, IsEnum, IsDateString, IsDate } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class TokenInfoDto {
@@ -80,7 +80,7 @@ export class WhaleTransactionDto {
   value: string;
 
   @ApiProperty({ description: 'Transaction timestamp' })
-  @IsNumber()
+  @IsDate()
   timestamp: number;
 
   @ApiPropertyOptional({ description: 'Gas price in Gwei' })
@@ -121,6 +121,10 @@ export class WhaleTransactionDto {
   @IsOptional()
   @IsString()
   status?: string;
+  @ApiPropertyOptional({ description: 'chain' })
+  @IsOptional()
+  @IsString()
+  chain?: string;
 }
 
 export class AddressTokensDto {
