@@ -35,6 +35,8 @@
     "class-validator": "^0.14.0",
     "ethers": "^6.8.1",
     "node-cron": "^3.0.3",
+    "@nestjs/mongoose": "^10.0.4",
+    "mongoose": "^8.6.0",
     "node-fetch": "^3.3.2",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",

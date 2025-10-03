@@ -1,4 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Alert, AlertDocument } from './schemas/alert.schema';
+import { Launch, LaunchDocument } from './schemas/launch.schema';
 import axios from 'axios';
 import { EventEmitter } from 'events';
 
@@ -133,8 +137,8 @@ export class WhaleMagnetService {
   private readonly WHALE_INVESTMENT_THRESHOLD_USD = 5000;
   private readonly WHALE_TRANSACTION_THRESHOLD = 1000; // Minimum USD for whale transaction
   private readonly HONEYPOT_RISK_RATIO = 50;
-  private readonly MAX_AGE_HOURS = 4; // Focus on tokens launched within 4 hours
-  private readonly NEW_LAUNCH_THRESHOLD_MINUTES = 240; // 4 hours
+  private readonly MAX_AGE_HOURS = 2; // Focus on tokens launched within 2 hours
+  private readonly NEW_LAUNCH_THRESHOLD_MINUTES = 120; // 2 hours
   
   // Target configurations
   private readonly TARGET_CHAINS = ['ethereum', 'solana', 'bsc', 'base', 'polygon'];
@@ -146,12 +150,36 @@ export class WhaleMagnetService {
   private whaleWallets = new Set<string>(); // Known whale wallets
   private bondingCurveTokens = new Map<string, BondingCurveStatus>();
 
-  constructor() {
+  constructor(
+    @InjectModel(Alert.name) private alertModel: Model<AlertDocument>,
+    @InjectModel(Launch.name) private launchModel: Model<LaunchDocument>,
+  ) {
     this.initializeKnownWhaleWallets();
     this.startWhaleHunting();
     this.startNewLaunchTracking();
     this.startWhaleTransactionMonitoring();
     this.startBondingCurveMonitoring();
+  }
+
+  // Simple exponential backoff with jitter for 429/5xx handling
+  private async fetchWithBackoff<T>(fn: () => Promise<T>, attempts: number = 5, baseDelayMs: number = 500): Promise<T> {
+    let lastError: any;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await fn();
+      } catch (error: any) {
+        lastError = error;
+        const status = error?.response?.status;
+        if (status && status !== 429 && status < 500) {
+          // Non-retryable
+          break;
+        }
+        const jitter = Math.floor(Math.random() * 250);
+        const delay = baseDelayMs * Math.pow(2, i) + jitter;
+        await new Promise(res => setTimeout(res, delay));
+      }
+    }
+    throw lastError;
   }
 
   private initializeKnownWhaleWallets() {
@@ -216,38 +244,76 @@ export class WhaleMagnetService {
   }
 
   private async fetchNewlyLaunchedPairs(): Promise<DexscreenerPair[]> {
-    const allPairs: DexscreenerPair[] = [];
-    
     try {
-      // Fetch from multiple endpoints for comprehensive coverage
-      const endpoints = [
-        'https://api.dexscreener.com/latest/dex/pairs/ethereum',
-        'https://api.dexscreener.com/latest/dex/pairs/solana', 
-        'https://api.dexscreener.com/latest/dex/pairs/bsc',
-        'https://api.dexscreener.com/latest/dex/pairs/base',
-        'https://api.dexscreener.com/latest/dex/pairs/polygon'
+      // Use valid Dexscreener endpoints to discover candidate tokens,
+      // then fetch their pairs and filter by recent creation time.
+      const sources = [
+        'https://api.dexscreener.com/token-boosts/latest/v1',
+        'https://api.dexscreener.com/token-boosts/top/v1',
+        'https://api.dexscreener.com/token-profiles/latest/v1'
       ];
 
-      const promises = endpoints.map(async (endpoint) => {
-        try {
-          const response = await axios.get(`${endpoint}?timestamp=${Date.now()}`, { timeout: 10000 });
-          return response.data.pairs || [];
-        } catch (error) {
-          this.logger.warn(`Failed to fetch from ${endpoint}:`, error.message);
-          return [];
+      const sourceResults = await Promise.all(
+        sources.map(async (url) => {
+          try {
+            const res = await this.fetchWithBackoff(() => axios.get(`${url}?timestamp=${Date.now()}`, { timeout: 10000 }));
+            return Array.isArray(res.data) ? res.data : [];
+          } catch (error: any) {
+            this.logger.warn(`Failed to fetch discovery source ${url}:`, error.message || error);
+            return [];
+          }
+        })
+      );
+
+      // Build a set of unique (chainId, tokenAddress)
+      const unique: Array<{ chainId: string; tokenAddress: string }> = [];
+      const seen = new Set<string>();
+      for (const arr of sourceResults) {
+        for (const item of arr) {
+          if (!item || !item.tokenAddress || !item.chainId) continue;
+          const key = `${item.chainId}:${item.tokenAddress}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            unique.push({ chainId: item.chainId, tokenAddress: item.tokenAddress });
+          }
         }
-      });
+      }
 
-      const results = await Promise.all(promises);
-      results.forEach(pairs => allPairs.push(...pairs));
+      if (unique.length === 0) {
+        this.logger.log('No candidate tokens discovered from boosted/profile sources.');
+        return [];
+      }
 
-      // Filter for recently created pairs
+      // Fetch pairs for each unique token, filter to the matching chain
+      // Throttle pair fetches to avoid 429
+      const concurrency = 5;
+      const pairResults: DexscreenerPair[][] = [];
+      for (let i = 0; i < unique.length; i += concurrency) {
+        const batch = unique.slice(i, i + concurrency);
+        const results = await Promise.all(batch.map(async ({ chainId, tokenAddress }) => {
+          try {
+            const pairs = await this.fetchTokenPairs(chainId, tokenAddress);
+            return pairs.filter(p => p.chainId === chainId);
+          } catch {
+            return [];
+          }
+        }));
+        pairResults.push(...results);
+        // small pause between batches
+        await new Promise(res => setTimeout(res, 300));
+      }
+
+      const allPairs = pairResults.flat();
+
+      // Filter for recent pairs
+      const cutoffMs = this.NEW_LAUNCH_THRESHOLD_MINUTES * 60 * 1000;
+      const now = Date.now();
       const recentPairs = allPairs.filter(pair => {
-        const ageMinutes = (Date.now() - pair.pairCreatedAt) / 60000;
-        return ageMinutes <= this.NEW_LAUNCH_THRESHOLD_MINUTES;
+        if (!pair.pairCreatedAt) return false;
+        return (now - pair.pairCreatedAt) <= cutoffMs;
       });
 
-      this.logger.log(`Found ${recentPairs.length} recently launched pairs`);
+      this.logger.log(`Found ${recentPairs.length} recently launched pairs from boosted/profile discovery`);
       return recentPairs;
     } catch (error) {
       this.logger.error('Error fetching newly launched pairs:', error.message);
@@ -282,6 +348,19 @@ export class WhaleMagnetService {
         this.logTokenDetails(whaleMagnet, 'NEW_LAUNCH');
         
         this.eventEmitter.emit('new_launch', whaleMagnet);
+        // persist launch
+        try { await this.launchModel.create({
+          chainId: whaleMagnet.chainId,
+          tokenAddress: whaleMagnet.tokenAddress,
+          tokenSymbol: whaleMagnet.tokenSymbol,
+          pairUrl: whaleMagnet.pairUrl,
+          pairAgeMinutes: whaleMagnet.pairAgeMinutes,
+          liquidityUsd: whaleMagnet.liquidityUsd,
+          marketCap: whaleMagnet.marketCap,
+          fdv: whaleMagnet.fdv,
+          pairCreatedAt: whaleMagnet.pairCreatedAt,
+          snapshot: whaleMagnet,
+        }); } catch {}
         this.eventEmitter.emit('whale_magnet', whaleMagnet);
       }
     } catch (error) {
@@ -522,6 +601,23 @@ export class WhaleMagnetService {
           this.logTokenDetails(whaleMagnet, 'WHALE_MAGNET');
           
           this.eventEmitter.emit('whale_magnet', whaleMagnet);
+          // persist launch if first time
+          try { await this.launchModel.updateOne(
+            { chainId: whaleMagnet.chainId, tokenAddress: whaleMagnet.tokenAddress },
+            { $setOnInsert: {
+              chainId: whaleMagnet.chainId,
+              tokenAddress: whaleMagnet.tokenAddress,
+              tokenSymbol: whaleMagnet.tokenSymbol,
+              pairUrl: whaleMagnet.pairUrl,
+              pairAgeMinutes: whaleMagnet.pairAgeMinutes,
+              liquidityUsd: whaleMagnet.liquidityUsd,
+              marketCap: whaleMagnet.marketCap,
+              fdv: whaleMagnet.fdv,
+              pairCreatedAt: whaleMagnet.pairCreatedAt,
+              snapshot: whaleMagnet,
+            } },
+            { upsert: true }
+          ); } catch {}
         }
       }
     } catch (error) {
@@ -713,10 +809,10 @@ export class WhaleMagnetService {
   private async fetchTokenPairs(chainId: string, tokenAddress: string): Promise<DexscreenerPair[]> {
     try {
       const url = `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`;
-      const response = await axios.get(url, { timeout: 10000 });
-      return response.data.pairs.filter(p => p.chainId === chainId) || [];
-    } catch (error) {
-      this.logger.error(`Failed to fetch pairs for ${tokenAddress} on ${chainId}:`, error.message);
+      const response = await this.fetchWithBackoff(() => axios.get(url, { timeout: 10000 }));
+      return response.data?.pairs?.filter((p: DexscreenerPair) => p.chainId === chainId) || [];
+    } catch (error: any) {
+      this.logger.error(`Failed to fetch pairs for ${tokenAddress} on ${chainId}:`, error?.message || error);
       return [];
     }
   }

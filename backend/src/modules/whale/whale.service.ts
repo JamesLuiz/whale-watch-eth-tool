@@ -429,12 +429,24 @@ private reconnect() {
   private async updateEthPrice() {
     const etherscanApiKey = this.configService.get('ETHERSCAN_API_KEY');
     try {
-      const response = await axios.get(
-        `https://api.etherscan.io/api?module=stats&action=ethprice&apikey=${etherscanApiKey}`
-      );
+      // Try Etherscan first
+      const response = await axios.get(
+        `https://api.etherscan.io/api?module=stats&action=ethprice&apikey=${etherscanApiKey}`,
+        { timeout: 8000 }
+      );
 
-      const newEthPrice = parseFloat(response.data.result.ethusd);
-      if (newEthPrice !== this.ethPrice) {
+      let newEthPrice = parseFloat(response?.data?.result?.ethusd);
+
+      // Fallback to CoinGecko if invalid or NaN
+      if (!isFinite(newEthPrice) || newEthPrice <= 0) {
+        const cg = await axios.get(
+          'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
+          { timeout: 8000 }
+        );
+        newEthPrice = parseFloat(cg?.data?.ethereum?.usd);
+      }
+
+      if (isFinite(newEthPrice) && newEthPrice > 0 && newEthPrice !== this.ethPrice) {
         this.ethPrice = newEthPrice;
         this.logger.log(`ETH price updated to: ${this.ethPrice}`);
       }
