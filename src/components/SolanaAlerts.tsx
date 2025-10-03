@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { io, Socket } from 'socket.io-client';
 
 type AlertLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
@@ -26,8 +27,9 @@ interface WhaleAlert {
   };
 }
 
-const WS_SOL_URL = (import.meta.env.VITE_BACKEND_WS ?? 'ws://localhost:3001') + '/solana-alerts';
-const WS_WM_URL = (import.meta.env.VITE_BACKEND_WS ?? 'ws://localhost:3001') + '/whale-magnet';
+const WS_BASE = (import.meta.env.VITE_BACKEND_HTTP ?? 'http://localhost:3001');
+const WS_SOL_PATH = '/solana-alerts';
+const WS_WM_PATH = '/whale-magnet';
 const API_URL = (import.meta.env.VITE_BACKEND_HTTP ?? 'http://localhost:3001') + '/api/v1/solana/alerts';
 
 function alertBadge(level: AlertLevel) {
@@ -42,7 +44,8 @@ function alertBadge(level: AlertLevel) {
 export default function SolanaAlerts() {
   const [alerts, setAlerts] = useState<WhaleAlert[]>([]);
   const [connected, setConnected] = useState(false);
-  const socketRef = useRef<WebSocket | null>(null);
+  const solSocketRef = useRef<Socket | null>(null);
+  const wmSocketRef = useRef<Socket | null>(null);
 
   // Initial load
   useEffect(() => {
@@ -52,68 +55,58 @@ export default function SolanaAlerts() {
       .catch(() => {});
   }, []);
 
-  // WebSocket live updates with retry
+  // Socket.IO (matches NestJS gateways) live updates with retry
   useEffect(() => {
-    let retry = 0;
-    function connect() {
-      const ws = new WebSocket(WS_SOL_URL.replace('http', 'ws').replace('https', 'wss'));
-      socketRef.current = ws;
-      ws.onopen = () => { setConnected(true); retry = 0; };
-      ws.onclose = () => {
-        setConnected(false);
-        const delay = Math.min(1000 * Math.pow(2, retry++), 15000);
-        setTimeout(connect, delay);
-      };
-      ws.onerror = () => ws.close();
-      ws.onmessage = (evt) => {
-        try {
-          const msg = JSON.parse(evt.data);
-          if (msg.type === 'whale_alert' && msg.data) {
-            setAlerts(prev => [msg.data as WhaleAlert, ...prev].slice(0, 200));
-          }
-          if (msg.type === 'alerts_response' && Array.isArray(msg.data)) {
-            setAlerts(msg.data as WhaleAlert[]);
-          }
-        } catch {}
-      };
-    }
-    connect();
-    return () => { socketRef.current?.close(); };
+    const sol = io(WS_BASE + WS_SOL_PATH, {
+      transports: ['websocket'],
+      withCredentials: true,
+    });
+    solSocketRef.current = sol;
+    sol.on('connect', () => setConnected(true));
+    sol.on('disconnect', () => setConnected(false));
+    sol.on('whale_alert', (payload: any) => {
+      if (payload?.data) setAlerts(prev => [payload.data as WhaleAlert, ...prev].slice(0, 200));
+    });
+    sol.on('alerts_response', (payload: any) => {
+      if (Array.isArray(payload?.data)) setAlerts(payload.data as WhaleAlert[]);
+    });
+    return () => { sol.disconnect(); };
   }, []);
 
   // Listen to whale magnet new launches
   useEffect(() => {
-    const ws = new WebSocket(WS_WM_URL.replace('http', 'ws').replace('https', 'wss'));
-    ws.onmessage = (evt) => {
-      try {
-        const msg = JSON.parse(evt.data);
-        if (msg.type === 'new_launch' && msg.data) {
-          const launch = msg.data;
-          const alert: WhaleAlert = {
-            id: `launch_${launch.chainId}_${launch.tokenAddress}_${msg.timestamp}`,
-            timestamp: msg.timestamp,
-            whaleAddress: 'new_launch',
-            tokenAddress: launch.tokenAddress,
-            alertLevel: 'MEDIUM',
-            message: `New launch: ${launch.tokenSymbol} on ${launch.chainId}`,
-            read: false,
-            tokenAnalysis: {
-              name: launch.tokenSymbol,
-              symbol: launch.tokenSymbol,
-              price: parseFloat(launch.priceUsd || '0') || 0,
-              marketCap: launch.marketCap || 0,
-              liquidity: launch.liquidityUsd || 0,
-              investmentScore: 50,
-              riskLevel: 'HIGH',
-              alerts: ['New token launch'],
-              recommendations: ['Monitor bonding curve and liquidity']
-            }
-          };
-          setAlerts(prev => [alert, ...prev].slice(0, 200));
+    const wm = io(WS_BASE + WS_WM_PATH, {
+      transports: ['websocket'],
+      withCredentials: true,
+    });
+    wmSocketRef.current = wm;
+    wm.on('new_launch', (payload: any) => {
+      const launch = payload?.data;
+      if (!launch) return;
+      const ts = payload?.timestamp || Date.now();
+      const alert: WhaleAlert = {
+        id: `launch_${launch.chainId}_${launch.tokenAddress}_${ts}`,
+        timestamp: ts,
+        whaleAddress: 'new_launch',
+        tokenAddress: launch.tokenAddress,
+        alertLevel: 'MEDIUM',
+        message: `New launch: ${launch.tokenSymbol} on ${launch.chainId}`,
+        read: false,
+        tokenAnalysis: {
+          name: launch.tokenSymbol,
+          symbol: launch.tokenSymbol,
+          price: parseFloat(launch.priceUsd || '0') || 0,
+          marketCap: launch.marketCap || 0,
+          liquidity: launch.liquidityUsd || 0,
+          investmentScore: 50,
+          riskLevel: 'HIGH',
+          alerts: ['New token launch'],
+          recommendations: ['Monitor bonding curve and liquidity']
         }
-      } catch {}
-    };
-    return () => ws.close();
+      };
+      setAlerts(prev => [alert, ...prev].slice(0, 200));
+    });
+    return () => { wm.disconnect(); };
   }, []);
 
   const stats = useMemo(() => {
