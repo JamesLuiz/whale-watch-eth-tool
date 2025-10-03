@@ -1,5 +1,6 @@
 import EthConverter from "@/components/EthConverter";
 import WhaleTracker from "@/components/WhaleTracker";
+import SolanaAlerts from "@/components/SolanaAlerts";
 
 const Index = () => {
   return (
@@ -22,9 +23,10 @@ const Index = () => {
             <EthConverter />
           </div>
 
-          {/* Right Column - Whale Tracker */}
+          {/* Right Column - Whale Tracker + Solana Alerts */}
           <div className="space-y-6 order-2 lg:order-2">
             <WhaleTracker />
+            <SolanaAlerts />
           </div>
         </div>
 
